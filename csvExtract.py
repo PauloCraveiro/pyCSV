@@ -11,3 +11,4 @@ with open('20081026094426.csv') as csv_file:
                                                                             row[5], row[6]))
         line_count += 1
     print(f'Processed {line_count} lines.')
+
