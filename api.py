@@ -13,7 +13,7 @@ def index():
 
 
 # regista endpoint de mycode.
-app.register_blueprint(py)
+app.register_blueprint(myCSVReader)
 
 
 # inicia api em modo dev/prod

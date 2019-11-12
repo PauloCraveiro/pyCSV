@@ -6,20 +6,23 @@ import xlsxwriter
 import datetime
 from cfg import XLSX_FILE
 
-#https://stackoverflow.com/questions/24420857/what-are-flask-blueprints-exactly
+# https://stackoverflow.com/questions/24420857/what-are-flask-blueprints-exactly
 myCSVReader = Blueprint('myCSVReader', __name__, template_folder='mycode')
 
-@py.route("/myCSVReader", methods=["GET"])
+
+@myCSVReader.route("/myCSVReader", methods=["GET"])
 def get_points():
     serializedData = []
     nextRow = None
     totalDistance = 0.0
     totalTime = 0.0
 
-    path = Path(__file__).parent.parent.joinpath('20081026094426.csv') #importa o caminho do csv dinamicamente
-    with open(path, mode="r") as csv_file:  #importa executa e fecha automaticamente
-        csvReader = csv.DictReader(csv_file, fieldnames=("Latitude", "Longitude", "Nr", "Altitude", "DateFrom", "Data", "Tempo"
-                                                         "Distancia(KM)", "Tempo(S)", "Vel(m/s)", "Vel(Km/h)", "Mode"))
+    path = Path(__file__).parent.parent.joinpath('20081026094426.csv')  # importa o caminho do csv dinamicamente
+    with open(path, mode="r") as csv_file:  # importa executa e fecha automaticamente
+        csvReader = csv.DictReader(csv_file,
+                                   fieldnames=("Latitude", "Longitude", "Nr", "Altitude", "DateFrom", "Data", "Tempo"
+                                                                                                              "Distancia(KM)",
+                                               "Tempo(S)", "Vel(m/s)", "Vel(Km/h)", "Mode"))
         lineCount = 0
         for row in csvReader:
             # if lineCount == 0:
@@ -29,9 +32,9 @@ def get_points():
                 altTest = float(row["Altitude"])
                 if altTest < 0:
                     row["Altitude"] = -333
-                print(f'\t{row["Altitude"]}')
-            serializedData.append(row)
-        lineCount += 1
+
+                serializedData.append(row)
+            lineCount += 1
 
         pos = 0
         for row in serializedData:
@@ -40,7 +43,8 @@ def get_points():
                 if pos + 1 <= len(serializedData) - 1:
                     next_row = serializedData[pos + 1]
                 if next_row is not None:
-                    p2_timestamp = datetime.datetime.strptime(next_row["Date"] + ' ' + next_row["Time"], '%Y-%m-%d %H:%M:%S')
+                    p2_timestamp = datetime.datetime.strptime(next_row["Date"] + ' ' + next_row["Time"],
+                                                              '%Y-%m-%d %H:%M:%S')
                     row["Tempo(S)"] = (p2_timestamp - p1_timestamp).total_seconds()
 
             if row["Distance (Km)"] is None:
@@ -52,22 +56,13 @@ def get_points():
                 row["Distancia(KM)"] = round(haversine(p1, p2), 2)
                 distanceMT = round(haversine(p1, p2, unit=Unit.METERS), 2)
 
-
             if row["Vel(m/s)"] is None:
                 row["Vel. m/s"] = round(distanceMT / float(row["Time (Sec)"]), 2)
                 row["Vel. km/h"] = round(float(row["Vel. m/s"]) * 3.6, 2)
 
-
-
-
             pos += 1
             totalDistance += row["Distancia(KM)"]
             totalTime += row["Tempo(S)"]
-
-
-
-
-
 
     workbook = xlsxwriter.Workbook(XLSX_FILE)
     worksheet = workbook.add_worksheet('Data')
@@ -82,7 +77,7 @@ def get_points():
     worksheet.write('G1', 'Distancia(KM)')
     worksheet.write('H1', 'Tempo(S)')
     worksheet.write('I1', 'Vel(m/s)')
-    worksheet.write('H1', 'Vel(km/h)')
+    worksheet.write('J1', 'Vel(km/h)')
 
     # lines
     lineNumber = 5
@@ -95,12 +90,16 @@ def get_points():
         worksheet.write(lineNumber, 5, row["Tempo"])
         worksheet.write(lineNumber, 6, row["Distancia(KM)"])
         worksheet.write(lineNumber, 7, row["Tempo(S)"])
+        worksheet.write(lineNumber, 8, row["Vel(m/s)"])
+        worksheet.write(lineNumber, 9, row["Vel(Km/h)"])
         lineNumber += 1
 
     workbook.close()
 
-    #https://stackoverflow.com/questions/7907596/json-dumps-vs-flask-jsonify
+    # https://stackoverflow.com/questions/7907596/json-dumps-vs-flask-jsonify
     if lineCount > 0:
-        return jsonify({'ok' : True, 'data': serializedData, "count": len(serializedData), "Distancia Total": totalDistance, "Tempo Total": totalTime}), 200
+        return jsonify(
+            {'ok': True, 'data': serializedData, "count": len(serializedData), "Distancia Total": totalDistance,
+             "Tempo Total": totalTime}), 200
     else:
         return jsonify({'ok': False, 'message': 'No points found'}), 400
