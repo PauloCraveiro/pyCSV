@@ -1,7 +1,7 @@
 from flask import Flask
 from gevent.pywsgi import WSGIServer
 from cfg import *
-from templates.se import *
+from mycode.myCSVReader import *
 import datetime
 
 app = Flask(__name__)
@@ -9,11 +9,11 @@ app = Flask(__name__)
 # api entry point
 @app.route("/")
 def index():
-    return "Welcome to Sistemas Embebidos API v1 - " + '{0:%Y-%m-%d %H:%M:%S}'.format(datetime.datetime.now())
+    return "Bem vindo a CSVReader by Paulo Craveiro - " + '{0:%Y-%m-%d %H:%M:%S}'.format(datetime.datetime.now())
 
 
-# regista endpoint de se.
-app.register_blueprint(se)
+# regista endpoint de mycode.
+app.register_blueprint(py)
 
 
 # inicia api em modo dev/prod

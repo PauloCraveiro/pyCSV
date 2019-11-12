@@ -7,9 +7,9 @@ import datetime
 from cfg import XLSX_FILE
 
 #https://stackoverflow.com/questions/24420857/what-are-flask-blueprints-exactly
-py = Blueprint('py', __name__, template_folder='py')
+myCSVReader = Blueprint('myCSVReader', __name__, template_folder='mycode')
 
-@py.route("/py", methods=["GET"])
+@py.route("/myCSVReader", methods=["GET"])
 def get_points():
     serializedData = []
     nextRow = None
@@ -22,10 +22,9 @@ def get_points():
                                                          "Distancia(KM)", "Tempo(S)", "Vel(m/s)", "Vel(Km/h)", "Mode"))
         lineCount = 0
         for row in csvReader:
-            if lineCount == 0:
-                print(f'\t{" ".join(row)}')
+            # if lineCount == 0:
+            #     print(f'\t{" ".join(row)}')
             if lineCount >= 6:
-                # print(f'\t{row["Latitude"]}\t{row["Longitude"]}\t{row["Nr"]}\t{row["Altitude"]}\t{row["DateFrom"]}\t{row["Date"]}\t{row["Time"]}')
 
                 altTest = float(row["Altitude"])
                 if altTest < 0:
@@ -42,7 +41,7 @@ def get_points():
                     next_row = serializedData[pos + 1]
                 if next_row is not None:
                     p2_timestamp = datetime.datetime.strptime(next_row["Date"] + ' ' + next_row["Time"], '%Y-%m-%d %H:%M:%S')
-                    row["Time (Sec)"] = (p2_timestamp - p1_timestamp).total_seconds()
+                    row["Tempo(S)"] = (p2_timestamp - p1_timestamp).total_seconds()
 
             if row["Distance (Km)"] is None:
                 p1 = (float(row["Latitude"]), float(row["Longitude"]))
@@ -51,9 +50,24 @@ def get_points():
             if next_row is not None:
                 p2 = (float(next_row["Latitude"]), float(next_row["Longitude"]))
                 row["Distancia(KM)"] = round(haversine(p1, p2), 2)
+                distanceMT = round(haversine(p1, p2, unit=Unit.METERS), 2)
+
+
+            if row["Vel(m/s)"] is None:
+                row["Vel. m/s"] = round(distanceMT / float(row["Time (Sec)"]), 2)
+                row["Vel. km/h"] = round(float(row["Vel. m/s"]) * 3.6, 2)
+
+
+
+
             pos += 1
             totalDistance += row["Distancia(KM)"]
             totalTime += row["Tempo(S)"]
+
+
+
+
+
 
     workbook = xlsxwriter.Workbook(XLSX_FILE)
     worksheet = workbook.add_worksheet('Data')
@@ -67,6 +81,8 @@ def get_points():
     worksheet.write('F1', 'Tempo')
     worksheet.write('G1', 'Distancia(KM)')
     worksheet.write('H1', 'Tempo(S)')
+    worksheet.write('I1', 'Vel(m/s)')
+    worksheet.write('H1', 'Vel(km/h)')
 
     # lines
     lineNumber = 5
