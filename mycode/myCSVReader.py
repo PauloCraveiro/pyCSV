@@ -20,9 +20,9 @@ def get_points():
     path = Path(__file__).parent.parent.joinpath('20081026094426.csv')  # importa o caminho do csv dinamicamente
     with open(path, mode="r") as csv_file:  # importa executa e fecha automaticamente
         csvReader = csv.DictReader(csv_file,
-                                   fieldnames=("Latitude", "Longitude", "Nr", "Altitude", "DateFrom", "Data", "Tempo"
-                                                                                                              "Distancia(KM)",
-                                               "Tempo(S)", "Vel(m/s)", "Vel(Km/h)", "Mode"))
+                                   fieldnames=("Latitude", "Longitude", "Nr", "Altitude", "DateFrom", "Data", "Tempo",
+                                               "Distancia(KM)", "Distancia(MT)", "Tempo(S)", "Vel(m/s)", "Vel(km/h)",
+                                               "Mode"))
         lineCount = 0
         for row in csvReader:
             # if lineCount == 0:
@@ -39,29 +39,37 @@ def get_points():
         pos = 0
         for row in serializedData:
             if row["Tempo(S)"] is None:
-                p1_timestamp = datetime.datetime.strftime(row["Data"] + ' ' + row["Tempo"], '%Y-%m-%d %H:%M:%S')
+                p1_timestamp = datetime.datetime.strptime(row["Data"] + ' ' + row["Tempo"], '%Y-%m-%d %H:%M:%S')
+
                 if pos + 1 <= len(serializedData) - 1:
-                    next_row = serializedData[pos + 1]
-                if next_row is not None:
-                    p2_timestamp = datetime.datetime.strptime(next_row["Date"] + ' ' + next_row["Time"],
+                    nextRow = serializedData[pos + 1]
+
+                if nextRow is not None:
+                    p2_timestamp = datetime.datetime.strptime(nextRow["Data"] + ' ' + nextRow["Tempo"],
                                                               '%Y-%m-%d %H:%M:%S')
                     row["Tempo(S)"] = (p2_timestamp - p1_timestamp).total_seconds()
 
-            if row["Distance (Km)"] is None:
+            if row["Distancia(KM)"] is None:
                 p1 = (float(row["Latitude"]), float(row["Longitude"]))
+
                 if pos + 1 <= len(serializedData) - 1:
-                    next_row = serializedData[pos + 1]
-            if next_row is not None:
-                p2 = (float(next_row["Latitude"]), float(next_row["Longitude"]))
-                row["Distancia(KM)"] = round(haversine(p1, p2), 2)
-                distanceMT = round(haversine(p1, p2, unit=Unit.METERS), 2)
+                    nextRow = serializedData[pos + 1]
+
+                if nextRow is not None:
+                    p2 = (float(nextRow["Latitude"]), float(nextRow["Longitude"]))
+                    row["Distancia(KM)"] = round(haversine(p1, p2, unit=Unit.KILOMETERS), 2)
+                    row["Distancia(MT)"] = distanciaMT = round(haversine(p1, p2, unit=Unit.METERS), 2)
 
             if row["Vel(m/s)"] is None:
-                row["Vel. m/s"] = round(distanceMT / float(row["Time (Sec)"]), 2)
-                row["Vel. km/h"] = round(float(row["Vel. m/s"]) * 3.6, 2)
+                try:
+                    row["Vel(m/s)"] = round(distanciaMT / float(row["Tempo(S)"]), 2)
+                    row["Vel(km/h)"] = round(float(row["Vel(m/s)"]) * 3.6, 2)
+                except:
+                    row["Vel(m/s)"] = 0.0
+                    row["Vel(km/h)"] = 0.0
 
             pos += 1
-            totalDistance += row["Distancia(KM)"]
+            totalDistance += distanciaMT
             totalTime += row["Tempo(S)"]
 
     workbook = xlsxwriter.Workbook(XLSX_FILE)
@@ -75,9 +83,10 @@ def get_points():
     worksheet.write('E1', 'Data')
     worksheet.write('F1', 'Tempo')
     worksheet.write('G1', 'Distancia(KM)')
-    worksheet.write('H1', 'Tempo(S)')
-    worksheet.write('I1', 'Vel(m/s)')
-    worksheet.write('J1', 'Vel(km/h)')
+    worksheet.write('H1', 'Distancia(MT)')
+    worksheet.write('I1', 'Tempo(S)')
+    worksheet.write('J1', 'Vel(m/s)')
+    worksheet.write('K1', 'Vel(km/h)')
 
     # lines
     lineNumber = 5
@@ -89,10 +98,14 @@ def get_points():
         worksheet.write(lineNumber, 4, row["Data"])
         worksheet.write(lineNumber, 5, row["Tempo"])
         worksheet.write(lineNumber, 6, row["Distancia(KM)"])
-        worksheet.write(lineNumber, 7, row["Tempo(S)"])
-        worksheet.write(lineNumber, 8, row["Vel(m/s)"])
-        worksheet.write(lineNumber, 9, row["Vel(Km/h)"])
+        worksheet.write(lineNumber, 7, row["Distancia(MT)"])
+        worksheet.write(lineNumber, 8, row["Tempo(S)"])
+        worksheet.write(lineNumber, 9, row["Vel(m/s)"])
+        worksheet.write(lineNumber, 10, row["Vel(km/h)"])
         lineNumber += 1
+
+    worksheet.write(lineNumber+1, 0, 'Distancia Total: ' + str(totalDistance))
+    worksheet.write(lineNumber+2, 0, 'Tempo Total: ' + str(totalTime))
 
     workbook.close()
 
