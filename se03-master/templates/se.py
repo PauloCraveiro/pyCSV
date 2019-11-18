@@ -4,7 +4,7 @@ from pathlib import Path
 from haversine import haversine, Unit
 import xlsxwriter
 import datetime
-from config import XLSX_FILE
+from cfg import XLSX_FILE
 
 se = Blueprint('se', __name__, template_folder='templates')
 
@@ -16,7 +16,7 @@ def get_points():
     total_distance = 0.0
     total_time = 0.0
 
-    path = Path(__file__).parent.parent.joinpath('20081026094426.csv')
+    path = Path(__file__).parent.parent.joinpath('20081026094426.csv') #importa o caminho do csv
     with open(path, mode='r') as csv_file:
         csv_reader = csv.DictReader(csv_file, fieldnames=("Latitude", "Longitude", "Nr", "Altitude", "DateFrom", "Date", "Time", "Distance (Km)", "Time (Sec)", "Vel. m/s", "Vel. km/h", "Mode"))
         line_count = 0
@@ -30,9 +30,9 @@ def get_points():
                 # Remover os valores negativos da altitude
                 a1 = float(row["Altitude"])
                 if a1 <= 0:
-                    row['Altitude'] = round(-777)
+                    row['Altitude'] = -777
 
-                # print(f'\t{row["Altitude"]}')
+                print(f'\t{row["Altitude"]}')
 
                 serializedData.append(row)
             line_count += 1

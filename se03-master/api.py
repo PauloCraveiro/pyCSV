@@ -1,6 +1,6 @@
 from flask import Flask
 from gevent.pywsgi import WSGIServer
-from config import *
+from cfg import *
 from templates.se import *
 import datetime
 
