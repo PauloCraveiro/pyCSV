@@ -1,10 +1,15 @@
-from flask import Blueprint, jsonify
+from itertools import cycle
+from urllib import request
+from flask import Blueprint, jsonify, request
 import csv
 from pathlib import Path
 from haversine import haversine, Unit
 import xlsxwriter
 import datetime
-from cfg import XLSX_FILE
+from cfg import *
+import re  # regular expressions
+from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 
 # https://stackoverflow.com/questions/24420857/what-are-flask-blueprints-exactly
 myCSVReader = Blueprint('myCSVReader', __name__, template_folder='mycode')
@@ -12,107 +17,298 @@ myCSVReader = Blueprint('myCSVReader', __name__, template_folder='mycode')
 
 @myCSVReader.route("/myCSVReader", methods=["GET"])
 def get_points():
-    serializedData = []
+    # importa dados do ficheiro IMPORT_FILE
+    # serializedData = importData(IMPORT_FILE)
+    global DOWNLOAD_PATH
+    file = ''
+
+    # valida chaves enviadas para a API
+    try:
+        if 'file' not in request.files:
+            file = None
+        else:
+            file = request.files('file')
+            # FILEPATH = Path(__file__).parent.parent.joinpath(file)
+            # Atribui ao DOWNLOAD_PATH o caminho parent.parent do ficheiro a executar, da UPLOAD_FOLDER desejada
+            DOWNLOAD_PATH = Path(__file__).parent.parent.joinpath(UPLOAD_FOLDER)
+
+        startIndex = request.form.get('Index', None)
+        if startIndex == '':
+            startIndex = None
+
+        latitude = request.form.get('latitude', None)
+        if latitude == '':
+            latitude = None
+
+    except HTTPException as e:
+        print(e)
+
+    serializedData, totalDistance, totalTime = processData(serializedData)
+
+    exportXLSX(serializedData, totalDistance, totalTime)
+
+    # https://stackoverflow.com/questions/7907596/json-dumps-vs-flask-jsonify
+    if len(serializedData) > 0:
+        return jsonify(
+            {'ok': True, 'data': serializedData, "count": len(serializedData), "total distance": totalDistance,
+             "total time": totalTime}), 200
+    else:
+        return jsonify({'ok': False, 'message': 'No points found'}), 400
+
+
+def processData(dataGroup):
+    pos = 0
     nextRow = None
     totalDistance = 0.0
     totalTime = 0.0
+    distanceMT = 0.0
 
-    path = Path(__file__).parent.parent.joinpath('20081026094426.csv')  # importa o caminho do csv dinamicamente
+    for row in dataGroup:
+        # calcula o tempo entre pontos
+        if row["Tempo(S)"] is None:
+            p1_timestamp = datetime.datetime.strptime(row["Data"] + ' ' + row["Tempo"], '%Y-%m-%d %H:%M:%S')
+
+            if pos + 1 <= len(dataGroup) - 1:
+                nextRow = dataGroup[pos + 1]
+
+            if nextRow is not None:
+                p2_timestamp = datetime.datetime.strptime(nextRow["Data"] + ' ' + nextRow["Tempo"],
+                                                          '%Y-%m-%d %H:%M:%S')
+                row["Tempo(S)"] = (p2_timestamp - p1_timestamp).total_seconds()
+
+        #
+        if row["Distancia(KM)"] is None:
+            p1 = (float(row["Latitude"]), float(row["Longitude"]))
+
+            if pos + 1 <= len(dataGroup) - 1:
+                nextRow = dataGroup[pos + 1]
+
+            if nextRow is not None:
+                p2 = (float(nextRow["Latitude"]), float(nextRow["Longitude"]))
+                row["Distancia(KM)"] = round(haversine(p1, p2, unit=Unit.KILOMETERS), 2)
+                row["Distancia(MT)"] = distanciaMT = round(haversine(p1, p2, unit=Unit.METERS), 2)
+
+        # calcula velocidade em m/s e k/s
+        if row["Vel(m/s)"] is None:
+            try:
+                row["Vel(m/s)"] = round(distanciaMT / float(row["Tempo(S)"]), 2)
+                row["Vel(km/h)"] = round(float(row["Vel(m/s)"]) * 3.6, 2)
+            except:
+                row["Vel(m/s)"] = 0.0
+                row["Vel(km/h)"] = 0.0
+
+        if row["Modo"] is None:
+            try:
+                row["Modo"] = 'Stop'
+
+                # regra guide Possible transportation modes are:
+                # walk, bike, bus, car, subway, train, airplane, boat, run and motorcycle
+                if 0.01 <= float(row["Vel(km/h)"]) <= 2.0:
+                    row["Modo"] = 'Walk'
+
+                # velocidade media de ser humano a andar 2-6 km
+                if 2.0 <= float(row["Vel(km/h)"]) <= 7.0:
+                    row["Modo"] = 'Walk'
+
+                # velocidade media de ser humano a correr 7-10 km
+                if 7.0 <= float(row["Vel(km/h)"]) <= 11.0:
+                    row["Modo"] = 'Run'
+
+                # velocidade media bicicleta 11-19 km
+                if 11.0 <= float(row["Vel(km/h)"]) <= 20.0:
+                    row["Modo"] = 'Bike'
+
+                # velocidade media carro https://en.wikipedia.org/wiki/Medium-speed_vehicle
+                if 20.0 <= float(row["Vel(km/h)"]) <= 72.9:
+                    row["Modo"] = 'Car'
+
+                # velocidade media aviao https://www.onaverage.co.uk/speed-averages/24-average-speed-of-a-plane
+                if 200.0 <= float(row["Vel(km/h)"]) <= 2000.0:
+                    row["Modo"] = 'Airplane'
+            except:
+                row["Modo"] = 'na'
+
+        pos += 1
+        totalDistance += distanciaMT
+        totalTime += row["Tempo(S)"]
+
+    return dataGroup, round(totalDistance, 2), round(totalTime, 2)
+
+
+def importData(fileToImport):
+    # parent = volta 1 pasta atras , parent.parent volta duas
+    processedData = []
+    path = Path(__file__).parent.parent.joinpath(fileToImport)  # importa o caminho do ficheiro dinamicamente ||
     with open(path, mode="r") as csv_file:  # importa executa e fecha automaticamente
         csvReader = csv.DictReader(csv_file,
                                    fieldnames=("Latitude", "Longitude", "Nr", "Altitude", "DateFrom", "Data", "Tempo",
                                                "Distancia(KM)", "Distancia(MT)", "Tempo(S)", "Vel(m/s)", "Vel(km/h)",
-                                               "Mode"))
+                                               "Modo"))
         lineCount = 0
+        startLine = 0
+
+        index = IMPORT_FILE_INDEX.get(fileToImport,
+                                      "Invalid Index")  # Retorna ou o valor do index ou retorna index invalido e inicia a 0
+        if not index == "Invalid Index":
+            startLine = index
+
         for row in csvReader:
-            # if lineCount == 0:
-            #     print(f'\t{" ".join(row)}')
-            if lineCount >= 6:
+            if lineCount >= startLine:
+                # cast para lista, para se poder tratar os dados de forma mais simples do que
+                # sem o cast pois os strings permitem coisas
+                # que o dictionary nao permite
+                itemsGroup = list(row.items())
 
-                altTest = float(row["Altitude"])
-                if altTest < 0:
-                    row["Altitude"] = -333
+                row['Latitude'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Latitude')][1] if IMPORT_FILE_HEADER_MAP.get(
+                    'Latitude', None) is not None else None
+                if row['Latitude'] is not None:
+                    match = re.search(r'(?:90(?:(?:\.0{1,6})?)|(?:[0-9]|[1-8][0-9])(?:(?:\.[0-9]{1,6})?))$',
+                                      row['Latitude'])
+                    if match is None:
+                        row['Latitude'] = None
 
-                serializedData.append(row)
+                row['Longitude'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Longitude')][1] if IMPORT_FILE_HEADER_MAP.get(
+                    'Longitude', None) is not None else None
+                if row['Longitude'] is not None:
+                    match = re.search(
+                        r'(?:180(?:(?:\.0{1,6})?)|(?:[0-9]|[1-9][0-9]|1[0-7][0-9])(?:(?:\.[0-9]{1,6})?))$',
+                        row['Longitude'])
+                    if match is None:
+                        row['Longitude'] = None
+
+                row['Nr'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Nr')][1] if IMPORT_FILE_HEADER_MAP.get('Nr',
+                                                                                                          None) is not None else None
+
+                row['Altitude'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Altitude')][1] if IMPORT_FILE_HEADER_MAP.get(
+                    'Altitude', None) is not None else None
+                if row['Altitude'] is not None:
+                    if float(row['Altitude']) <= 0:
+                        row['Altitude'] = -333
+
+                row['DateFrom'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('DateFrom')][1] if IMPORT_FILE_HEADER_MAP.get(
+                    'DateFrom', None) is not None else None
+
+                row['Data'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Data')][1] if IMPORT_FILE_HEADER_MAP.get('Data',
+                                                                                                              None) is not None else None
+
+                if row['Data'] is not None:
+                    match = re.search(r'\d{2}-\d{2}-\d{4}', row['Data'])
+                    dataFilter = '%d-%m-%Y'
+                    if match is None:
+                        match = re.search(r'\d{4}-\d{2}-\d{2}', row['Data'])
+                        dataFilter = '%Y-%m-%d'
+                    if match is not None:
+                        date = datetime.datetime.strptime(match.group(), dataFilter).date()
+                        row['Data'] = date.strftime('%Y-%m-%d')
+                    else:
+                        row['Data'] = None
+
+                row['Tempo'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Tempo')][1] if IMPORT_FILE_HEADER_MAP.get('Tempo',
+                                                                                                                None) is not None else None
+                if row['Tempo'] is not None:
+                    match = re.search(r'\d{2}:\d{2}:\d{2}', row['Tempo'])
+                    if match is not None:
+                        time = datetime.datetime.strptime(match.group(), '%H:%M:%S').time()
+                        row['Tempo'] = time.strftime("%H:%M:%S")
+                    else:
+                        row['Tempo'] = None
+
+                row['Distancia(KM)'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Distancia(KM)')][
+                    1] if IMPORT_FILE_HEADER_MAP.get('Distancia(KM)', None) is not None else None
+                row['Distancia(MT)'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Distancia(MT)')][
+                    1] if IMPORT_FILE_HEADER_MAP.get('Distance (Mt)', None) is not None else None
+                row['Tempo(S)'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Tempo(S)')][
+                    1] if IMPORT_FILE_HEADER_MAP.get('Time (Sec)', None) is not None else None
+                row['Vel(m/s)'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Vel(m/s)')][1] if IMPORT_FILE_HEADER_MAP.get(
+                    'Vel(m/s)', None) is not None else None
+                row['Vel(km/h)'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Vel(km/h)')][1] if IMPORT_FILE_HEADER_MAP.get(
+                    'Vel(km/h)', None) is not None else None
+                row['Modo'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Modo')][1] if IMPORT_FILE_HEADER_MAP.get('Modo',
+                                                                                                              None) is not None else None
+
+                if row['Latitude'] is not None and row['Longitude'] is not None and row['Data'] is not None and row[
+                    'Tempo'] is not None:
+                    processedData.append(row)
+
             lineCount += 1
 
-        pos = 0
-        for row in serializedData:
-            if row["Tempo(S)"] is None:
-                p1_timestamp = datetime.datetime.strptime(row["Data"] + ' ' + row["Tempo"], '%Y-%m-%d %H:%M:%S')
+    return processedData
 
-                if pos + 1 <= len(serializedData) - 1:
-                    nextRow = serializedData[pos + 1]
 
-                if nextRow is not None:
-                    p2_timestamp = datetime.datetime.strptime(nextRow["Data"] + ' ' + nextRow["Tempo"],
-                                                              '%Y-%m-%d %H:%M:%S')
-                    row["Tempo(S)"] = (p2_timestamp - p1_timestamp).total_seconds()
-
-            if row["Distancia(KM)"] is None:
-                p1 = (float(row["Latitude"]), float(row["Longitude"]))
-
-                if pos + 1 <= len(serializedData) - 1:
-                    nextRow = serializedData[pos + 1]
-
-                if nextRow is not None:
-                    p2 = (float(nextRow["Latitude"]), float(nextRow["Longitude"]))
-                    row["Distancia(KM)"] = round(haversine(p1, p2, unit=Unit.KILOMETERS), 2)
-                    row["Distancia(MT)"] = distanciaMT = round(haversine(p1, p2, unit=Unit.METERS), 2)
-
-            if row["Vel(m/s)"] is None:
-                try:
-                    row["Vel(m/s)"] = round(distanciaMT / float(row["Tempo(S)"]), 2)
-                    row["Vel(km/h)"] = round(float(row["Vel(m/s)"]) * 3.6, 2)
-                except:
-                    row["Vel(m/s)"] = 0.0
-                    row["Vel(km/h)"] = 0.0
-
-            pos += 1
-            totalDistance += distanciaMT
-            totalTime += row["Tempo(S)"]
-
+def exportXLSX(dataGroup, totalDistance, totalTime):
     workbook = xlsxwriter.Workbook(XLSX_FILE)
     worksheet = workbook.add_worksheet('Data')
+    header_format = workbook.add_format({'bold': True, 'font_color': 'black'})
+    header_data_format = workbook.add_format({'font_color': 'Gray'})
+    # worksheet.write(0, 0, None, header_data_format)
+    worksheet.write_blank(0, 0, None, header_data_format)
+    worksheet.write(1, 0, None, header_data_format)
 
+    worksheet.set_column(2, 0, 25)
+    worksheet.write(2, 0, 'Total distance(mt)', header_format)
+    worksheet.write(2, 1, totalDistance, header_data_format)
+    worksheet.set_column(3, 0, 10)
+    worksheet.write(3, 0, 'Total time(s)', header_format)
+    worksheet.write(3, 1, totalTime, header_data_format)
+    worksheet.write(3, 2, 'Delta', header_format)
+    worksheet.write(3, 3, str(datetime.timedelta(seconds=totalTime)), header_data_format)
+
+    # # headers
+    # worksheet.write('A1', 'Latitude')
+    # worksheet.write('B1', 'Latitude')
+    # worksheet.write('C1', 'Nr')
+    # worksheet.write('D1', 'Altitude')
+    # worksheet.write('E1', 'Data')
+    # worksheet.write('F1', 'Tempo')
+    # worksheet.write('G1', 'Distancia(KM)')
+    # worksheet.write('H1', 'Distancia(MT)')
+    # worksheet.write('I1', 'Tempo(S)')
+    # worksheet.write('J1', 'Vel(m/s)')
+    # worksheet.write('K1', 'Vel(km/h)')
+
+    lineNumber = 5
     # headers
-    worksheet.write('A1', 'Latitude')
-    worksheet.write('B1', 'Latitude')
-    worksheet.write('C1', 'Nr')
-    worksheet.write('D1', 'Altitude')
-    worksheet.write('E1', 'Data')
-    worksheet.write('F1', 'Tempo')
-    worksheet.write('G1', 'Distancia(KM)')
-    worksheet.write('H1', 'Distancia(MT)')
-    worksheet.write('I1', 'Tempo(S)')
-    worksheet.write('J1', 'Vel(m/s)')
-    worksheet.write('K1', 'Vel(km/h)')
+    # worksheet.set_column(line_number, 0, 10)
+    worksheet.write(lineNumber, 0, 'Latitude', header_format)
+    worksheet.write(lineNumber, 1, 'Longitude', header_format)
+    worksheet.write(lineNumber, 2, 'Nr', header_format)
+    worksheet.write(lineNumber, 3, 'Altitude', header_format)
+    worksheet.set_column(lineNumber, 4, 10)
+    worksheet.write(lineNumber, 4, 'Data', header_format)
+    worksheet.set_column(lineNumber, 5, 10)
+    worksheet.write(lineNumber, 5, 'Tempo', header_format)
+    worksheet.set_column(lineNumber, 6, 40)
+    worksheet.write(lineNumber, 6, 'Distancia(KM)', header_format)
+    worksheet.set_column(lineNumber, 7, 40)
+    worksheet.write(lineNumber, 7, 'Distancia(MT)', header_format)
+    worksheet.set_column(lineNumber, 8, 10)
+    worksheet.write(lineNumber, 8, 'Tempo(S)', header_format)
+    worksheet.write(lineNumber, 9, 'Vel(m/s)', header_format)
+    worksheet.write(lineNumber, 10, 'Vel(km/h)', header_format)
+    worksheet.write(lineNumber, 11, 'Modo', header_format)
+    lineNumber += 1
 
     # lines
-    lineNumber = 5
-    for row in serializedData:
-        worksheet.write(lineNumber, 0, row["Latitude"])
-        worksheet.write(lineNumber, 1, row["Longitude"])
-        worksheet.write(lineNumber, 2, row["Nr"])
-        worksheet.write(lineNumber, 3, row["Altitude"])
-        worksheet.write(lineNumber, 4, row["Data"])
-        worksheet.write(lineNumber, 5, row["Tempo"])
-        worksheet.write(lineNumber, 6, row["Distancia(KM)"])
-        worksheet.write(lineNumber, 7, row["Distancia(MT)"])
-        worksheet.write(lineNumber, 8, row["Tempo(S)"])
-        worksheet.write(lineNumber, 9, row["Vel(m/s)"])
-        worksheet.write(lineNumber, 10, row["Vel(km/h)"])
+    lines_format = workbook.add_format({'bg_color': '#ffffff'})
+    data_format_odd = workbook.add_format({'bg_color': '#7a6f6f'})
+    data_format_even = workbook.add_format({'bg_color': '#c2c0c0'})
+    formats = cycle([data_format_odd, data_format_even])
+
+    for row, row_data in enumerate(dataGroup):
+        data_format = next(formats)
+        # worksheet.set_row(line_number, None, data_format)
+        worksheet.write(lineNumber, 0, row_data["Latitude"], data_format)
+        worksheet.write(lineNumber, 1, row_data["Longitude"], data_format)
+        worksheet.write(lineNumber, 2, row_data["Nr"], data_format)
+        worksheet.write(lineNumber, 3, row_data["Altitude"], data_format)
+        worksheet.write(lineNumber, 4, row_data["Data"], data_format)
+        worksheet.write(lineNumber, 5, row_data["Tempo"], data_format)
+        worksheet.write(lineNumber, 6, row_data["Distancia(KM)"], data_format)
+        worksheet.write(lineNumber, 7, row_data["Distancia(MT)"], data_format)
+        worksheet.write(lineNumber, 8, row_data["Tempo(S)"], data_format)
+        worksheet.write(lineNumber, 9, row_data["Vel(m/s)"], data_format)
+        worksheet.write(lineNumber, 10, row_data["Vel(km/h)"], data_format)
+        worksheet.write(lineNumber, 11, row_data["Modo"], data_format)
         lineNumber += 1
 
-    worksheet.write(lineNumber+1, 0, 'Distancia Total: ' + str(totalDistance))
-    worksheet.write(lineNumber+2, 0, 'Tempo Total: ' + str(totalTime))
-
     workbook.close()
-
-    # https://stackoverflow.com/questions/7907596/json-dumps-vs-flask-jsonify
-    if lineCount > 0:
-        return jsonify(
-            {'ok': True, 'data': serializedData, "count": len(serializedData), "Distancia Total": totalDistance,
-             "Tempo Total": totalTime}), 200
-    else:
-        return jsonify({'ok': False, 'message': 'No points found'}), 400
