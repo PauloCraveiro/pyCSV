@@ -1,3 +1,4 @@
+import os
 from itertools import cycle
 from urllib import request
 from flask import Blueprint, jsonify, request
@@ -28,12 +29,12 @@ def get_points():
         if 'file' not in request.files:
             file = None
         else:
-            file = request.files('file')
+            file = request.files['file']
             # FILEPATH = Path(__file__).parent.parent.joinpath(file)
             # Atribui ao DOWNLOAD_PATH o caminho parent.parent do ficheiro a executar, da UPLOAD_FOLDER desejada
             downloadPath = Path(__file__).parent.parent.joinpath(UPLOAD_FOLDER)
 
-        startIndex = request.form.get('Index', None)  # request.form.get permite valor default, request.form nao permite
+        startIndex = request.form.get('index', None)  # request.form.get permite valor default, request.form nao permite
         if startIndex == '':
             startIndex = None
         elif startIndex is not None:
@@ -90,8 +91,14 @@ def get_points():
                                        "Tempo(S)": None, "Vel(m/s)": None, "Vel(km/h)": None,
                                        "Modo": None})
 
+        if file and isValid:
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(downloadPath, filename))
+
     except HTTPException as e:
         print(e)
+
+    serializedData = importData(downloadPath, file.filename)
 
     serializedData, totalDistance, totalTime = processData(serializedData)
 
@@ -185,10 +192,11 @@ def processData(dataGroup):
     return dataGroup, round(totalDistance, 2), round(totalTime, 2)
 
 
-def importData(fileToImport):
+def importData(downloadPath, fileToImport):
     # parent = volta 1 pasta atras , parent.parent volta duas
     processedData = []
-    path = Path(__file__).parent.parent.joinpath(fileToImport)  # importa o caminho do ficheiro dinamicamente ||
+    path = os.path.join(downloadPath, fileToImport)
+    # path = Path(__file__).parent.parent.joinpath(fileToImport)  # importa o caminho do ficheiro dinamicamente ||
     with open(path, mode="r") as csv_file:  # importa executa e fecha automaticamente
         csvReader = csv.DictReader(csv_file,
                                    fieldnames=("Latitude", "Longitude", "Nr", "Altitude", "DateFrom", "Data", "Tempo",
@@ -197,8 +205,7 @@ def importData(fileToImport):
         lineCount = 0
         startLine = 0
 
-        index = IMPORT_FILE_INDEX.get(fileToImport,
-                                      "Invalid Index")  # Retorna ou o valor do index ou retorna index invalido e inicia a 0
+        index = IMPORT_FILE_HEADER_MAP.get('index')
         if not index == "Invalid Index":
             startLine = index
 

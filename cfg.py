@@ -4,10 +4,10 @@ SERVER_PORT = 4000
 XLSX_FILE = 'myCSVReader.xlsx'
 #IMPORT_FILE = '20081026094426.csv'
 #IMPORT_FILE = '15-07-2017-ap-02738d854419-pml.csv'
-IMPORT_FILE_INDEX = {
-        "20081026094426.csv": 6,
-        "15-07-2017-ap-02738d854419-pml.csv": 1
-    }
+# IMPORT_FILE_INDEX = {
+#         "20081026094426.csv": 6,
+#         "15-07-2017-ap-02738d854419-pml.csv": 1
+#     }
 
 
 IMPORT_FILE_HEADER_MAP = {}
@@ -46,7 +46,7 @@ IMPORT_FILE_HEADER_MAP = {}
 #         "Modo": None
 #     }
 # tipo de ficheiros permitidos
-UPLOAD_ALLOWED_EXTENSIONS = set(['txt', 'csv'])
+UPLOAD_ALLOWED_EXTENSIONS = set(['txt', 'csv']) # aceitar XLSX
 #pasta onde o ficheiro do utilizador fica
 UPLOAD_FOLDER = 'downloads'
 FILEPATH = ''
