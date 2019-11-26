@@ -19,7 +19,8 @@ myCSVReader = Blueprint('myCSVReader', __name__, template_folder='mycode')
 def get_points():
     # importa dados do ficheiro IMPORT_FILE
     # serializedData = importData(IMPORT_FILE)
-    global DOWNLOAD_PATH
+    isValid = False
+    downloadPath = ''
     file = ''
 
     # valida chaves enviadas para a API
@@ -30,15 +31,64 @@ def get_points():
             file = request.files('file')
             # FILEPATH = Path(__file__).parent.parent.joinpath(file)
             # Atribui ao DOWNLOAD_PATH o caminho parent.parent do ficheiro a executar, da UPLOAD_FOLDER desejada
-            DOWNLOAD_PATH = Path(__file__).parent.parent.joinpath(UPLOAD_FOLDER)
+            downloadPath = Path(__file__).parent.parent.joinpath(UPLOAD_FOLDER)
 
-        startIndex = request.form.get('Index', None)
+        startIndex = request.form.get('Index', None)  # request.form.get permite valor default, request.form nao permite
         if startIndex == '':
             startIndex = None
+        elif startIndex is not None:
+            startIndex = int(startIndex)
 
         latitude = request.form.get('latitude', None)
         if latitude == '':
             latitude = None
+        elif latitude is not None:
+            latitude = int(latitude)
+
+        longitude = request.form.get('longitude', None)
+        if longitude == '':
+            longitude = None
+        elif longitude is not None:
+            longitude = int(longitude)
+
+        data = request.form.get('data', None)
+        if data == '':
+            data = None
+        elif data is not None:
+            data = int(data)
+
+        tempo = request.form.get('time', None)
+        if tempo == '':
+            tempo = None
+        elif tempo is not None:
+            tempo = int(tempo)
+
+        altitude = request.form.get('altitude', None)
+        if altitude == '':
+            altitude = None
+        elif altitude is not None:
+            altitude = int(altitude)
+
+        datefrom = request.form.get('datefrom', None)
+        if datefrom == '':
+            datefrom = None
+        elif datefrom is not None:
+            datefrom = int(datefrom)
+
+        nr = request.form.get('nr', None)
+        if nr == '':
+            nr = None
+        elif nr is not None:
+            nr = int(nr)
+
+        if file is not None and startIndex is not None and latitude is not None and longitude is not None and data is not None and tempo is not None:
+            isValid = True
+
+        IMPORT_FILE_HEADER_MAP.update({"index": startIndex, "Latitude": latitude, "Longitude": longitude,
+                                       "Nr": nr, "Altitude": altitude, "DateFrom": datefrom, "Data": data,
+                                       "Tempo": tempo, "Distancia(KM)": None, "Distancia(MT)": None,
+                                       "Tempo(S)": None, "Vel(m/s)": None, "Vel(km/h)": None,
+                                       "Modo": None})
 
     except HTTPException as e:
         print(e)
