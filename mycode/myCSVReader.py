@@ -346,9 +346,9 @@ def exportXLSX(dataGroup, totalDistance, totalTime):
     lineNumber += 1
 
     # lines
-    lines_format = workbook.add_format({'bg_color': '#ffffff'})
-    data_format_odd = workbook.add_format({'bg_color': '#7a6f6f'})
-    data_format_even = workbook.add_format({'bg_color': '#c2c0c0'})
+    #lines_format = workbook.add_format({'bg_color': '#ffffff'})
+    data_format_odd = workbook.add_format({'bg_color': '#078a74'})
+    data_format_even = workbook.add_format({'bg_color': '#07638a'})
     formats = cycle([data_format_odd, data_format_even])
 
     for row, row_data in enumerate(dataGroup):
