@@ -34,62 +34,74 @@ def get_points():
             # Atribui ao DOWNLOAD_PATH o caminho parent.parent do ficheiro a executar, da UPLOAD_FOLDER desejada
             downloadPath = Path(__file__).parent.parent.joinpath(UPLOAD_FOLDER)
 
-        startIndex = request.form.get('index', None)  # request.form.get permite valor default, request.form nao permite
+        # request.form.get permite valor default, request.form nao permite
+        # form.get vai buscar o valor ao POSTMAN, ao campo index, se não tiver anda, coloca None como default
+        startIndex = request.form.get('index', None)
         if startIndex == '':
             startIndex = None
         elif startIndex is not None:
             startIndex = int(startIndex)
 
+        # form.get vai buscar o valor ao POSTMAN, ao campo latitude, se não tiver anda, coloca None como default
         latitude = request.form.get('latitude', None)
         if latitude == '':
             latitude = None
         elif latitude is not None:
             latitude = int(latitude)
 
+        # form.get vai buscar o valor ao POSTMAN, ao campo longitude, se não tiver anda, coloca None como default
         longitude = request.form.get('longitude', None)
         if longitude == '':
             longitude = None
         elif longitude is not None:
             longitude = int(longitude)
 
+        # form.get vai buscar o valor ao POSTMAN, ao campo data, se não tiver anda, coloca None como default
         data = request.form.get('data', None)
         if data == '':
             data = None
         elif data is not None:
             data = int(data)
 
+        # form.get vai buscar o valor ao POSTMAN, ao campo tempo, se não tiver anda, coloca None como default
         tempo = request.form.get('time', None)
         if tempo == '':
             tempo = None
         elif tempo is not None:
             tempo = int(tempo)
 
+        # form.get vai buscar o valor ao POSTMAN, ao campo altitude, se não tiver anda, coloca None como default
         altitude = request.form.get('altitude', None)
         if altitude == '':
             altitude = None
         elif altitude is not None:
             altitude = int(altitude)
 
+        # form.get vai buscar o valor ao POSTMAN, ao campo datefrom, se não tiver anda, coloca None como default
         datefrom = request.form.get('datefrom', None)
         if datefrom == '':
             datefrom = None
         elif datefrom is not None:
             datefrom = int(datefrom)
 
+        # form.get vai buscar o valor ao POSTMAN, ao campo nr, se não tiver anda, coloca None como default
         nr = request.form.get('nr', None)
         if nr == '':
             nr = None
         elif nr is not None:
             nr = int(nr)
 
+        # verifica se o file, startindex, latitude, longitude, data e tempo têm valores, e se tiverem coloca o isValid a true
         if file is not None and startIndex is not None and latitude is not None and longitude is not None and data is not None and tempo is not None:
             isValid = True
 
+        # cria o header do ficheiro
         IMPORT_FILE_HEADER_MAP.update({"index": startIndex, "Latitude": latitude, "Longitude": longitude,
                                        "Nr": nr, "Altitude": altitude, "DateFrom": datefrom, "Data": data,
                                        "Tempo": tempo, "Distancia(KM)": None, "Distancia(MT)": None,
                                        "Tempo(S)": None, "Vel(m/s)": None, "Vel(km/h)": None,
                                        "Modo": None})
+
 
         if file and isValid:
             filename = secure_filename(file.filename)
@@ -98,13 +110,17 @@ def get_points():
     except HTTPException as e:
         print(e)
 
+    # importa os dados para a variavel
     serializedData = importData(downloadPath, file.filename)
 
+    # executa o processData com a variavel serializedData e coloca nas variaveis na ordem
     serializedData, totalDistance, totalTime = processData(serializedData)
 
+    # exporta os dados para o ficheiro XLSX
     exportXLSX(serializedData, totalDistance, totalTime)
 
     # https://stackoverflow.com/questions/7907596/json-dumps-vs-flask-jsonify
+    # exporta para a API em JSON
     if len(serializedData) > 0:
         return jsonify(
             {'ok': True, 'data': serializedData, "count": len(serializedData), "total distance": totalDistance,
@@ -133,7 +149,7 @@ def processData(dataGroup):
                                                           '%Y-%m-%d %H:%M:%S')
                 row["Tempo(S)"] = (p2_timestamp - p1_timestamp).total_seconds()
 
-        #
+        # calcula a distancia em KM e MT
         if row["Distancia(KM)"] is None:
             p1 = (float(row["Latitude"]), float(row["Longitude"]))
 
@@ -154,6 +170,7 @@ def processData(dataGroup):
                 row["Vel(m/s)"] = 0.0
                 row["Vel(km/h)"] = 0.0
 
+        # calcula o metodo de transporte usado
         if row["Modo"] is None:
             try:
                 row["Modo"] = 'Stop'
@@ -204,7 +221,7 @@ def importData(downloadPath, fileToImport):
                                                "Modo"))
         lineCount = 0
         startLine = 0
-
+        # coloca o index ou seja, o numero de linhas a ignorar
         index = IMPORT_FILE_HEADER_MAP.get('index')
         if not index == "Invalid Index":
             startLine = index
@@ -216,6 +233,7 @@ def importData(downloadPath, fileToImport):
                 # que o dictionary nao permite
                 itemsGroup = list(row.items())
 
+                # re.search procura na row a expressão e se encontrar retorna true, se não mantem a variavel como NONE
                 row['Latitude'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Latitude')][1] if IMPORT_FILE_HEADER_MAP.get(
                     'Latitude', None) is not None else None
                 if row['Latitude'] is not None:
@@ -224,6 +242,7 @@ def importData(downloadPath, fileToImport):
                     if match is None:
                         row['Latitude'] = None
 
+                # re.search procura na row a expressão e se encontrar retorna true, se não mantem a variavel como NONE
                 row['Longitude'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Longitude')][1] if IMPORT_FILE_HEADER_MAP.get(
                     'Longitude', None) is not None else None
                 if row['Longitude'] is not None:
@@ -233,6 +252,7 @@ def importData(downloadPath, fileToImport):
                     if match is None:
                         row['Longitude'] = None
 
+                # ternarios para insercao do valor na row
                 row['Nr'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Nr')][1] if IMPORT_FILE_HEADER_MAP.get('Nr',
                                                                                                           None) is not None else None
 
@@ -240,7 +260,7 @@ def importData(downloadPath, fileToImport):
                     'Altitude', None) is not None else None
                 if row['Altitude'] is not None:
                     if float(row['Altitude']) <= 0:
-                        row['Altitude'] = -333
+                        row['Altitude'] = -777
 
                 row['DateFrom'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('DateFrom')][1] if IMPORT_FILE_HEADER_MAP.get(
                     'DateFrom', None) is not None else None
@@ -248,6 +268,7 @@ def importData(downloadPath, fileToImport):
                 row['Data'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Data')][1] if IMPORT_FILE_HEADER_MAP.get('Data',
                                                                                                               None) is not None else None
 
+                # expressao regular que procura uma data xx/xx/xxx ou xxxx/xx/xx
                 if row['Data'] is not None:
                     match = re.search(r'\d{2}-\d{2}-\d{4}', row['Data'])
                     dataFilter = '%d-%m-%Y'
@@ -262,6 +283,7 @@ def importData(downloadPath, fileToImport):
 
                 row['Tempo'] = itemsGroup[IMPORT_FILE_HEADER_MAP.get('Tempo')][1] if IMPORT_FILE_HEADER_MAP.get('Tempo',
                                                                                                                 None) is not None else None
+
                 if row['Tempo'] is not None:
                     match = re.search(r'\d{2}:\d{2}:\d{2}', row['Tempo'])
                     if match is not None:
